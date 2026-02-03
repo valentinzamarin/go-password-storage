@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	command "password-storage/internal/app/command"
 	"password-storage/internal/app/common"
@@ -23,7 +24,7 @@ func NewPasswordService(passwordRepo repositories.PasswordRepo, encrypt interfac
 	}
 }
 
-func (ps *PasswordService) AddNewPassword(addCommand *command.AddPasswordCommand) error {
+func (ps *PasswordService) AddNewPassword(ctx context.Context, addCommand *command.AddPasswordCommand) error {
 
 	encryptedPass, err := ps.encrypt.Encrypt([]byte(addCommand.Password))
 	if err != nil {
@@ -40,15 +41,15 @@ func (ps *PasswordService) AddNewPassword(addCommand *command.AddPasswordCommand
 		return err
 	}
 
-	if err := ps.passwordRepo.Add(newPassword); err != nil {
+	if err := ps.passwordRepo.Add(ctx, newPassword); err != nil {
 		return fmt.Errorf("failed to save password: %w", err)
 	}
 
 	return nil
 }
 
-func (ps *PasswordService) GetAllPasswords() (*query.PasswordsQueryResult, error) {
-	allPasswords, err := ps.passwordRepo.GetAll()
+func (ps *PasswordService) GetAllPasswords(ctx context.Context) (*query.PasswordsQueryResult, error) {
+	allPasswords, err := ps.passwordRepo.GetAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get passwords: %w", err)
 	}
@@ -69,12 +70,38 @@ func (ps *PasswordService) GetAllPasswords() (*query.PasswordsQueryResult, error
 	}, nil
 }
 
-func (ps *PasswordService) DeletePassword(cmd *command.DeletePasswordCommand) error {
+func (ps *PasswordService) DeletePassword(ctx context.Context, cmd *command.DeletePasswordCommand) error {
 	if cmd == nil {
 		return fmt.Errorf("delete command is nil")
 	}
-	if err := ps.passwordRepo.Delete(cmd.ID); err != nil {
+	if err := ps.passwordRepo.Delete(ctx, cmd.ID); err != nil {
 		return fmt.Errorf("failed to delete password: %w", err)
 	}
+	return nil
+}
+
+func (ps *PasswordService) UpdatePassword(ctx context.Context, cmd *command.UpdatePasswordCommand) error {
+	if cmd == nil {
+		return fmt.Errorf("update command is nil")
+	}
+	// load existing entity
+	existing, err := ps.passwordRepo.GetByID(ctx, cmd.ID)
+	if err != nil {
+		return fmt.Errorf("failed to load password: %w", err)
+	}
+
+	encryptedPass, err := ps.encrypt.Encrypt([]byte(cmd.Password))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt password: %w", err)
+	}
+
+	if err := existing.Update(cmd.URL, cmd.Login, string(encryptedPass), cmd.Description); err != nil {
+		return fmt.Errorf("invalid update: %w", err)
+	}
+
+	if err := ps.passwordRepo.Update(ctx, existing); err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
 	return nil
 }

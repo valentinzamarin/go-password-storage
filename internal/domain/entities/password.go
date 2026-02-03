@@ -64,3 +64,13 @@ func (p *Password) SetID(id uint) {
 func (p *Password) SetPassword(newPassword string) {
 	p.password = newPassword
 }
+
+// Update updates mutable fields of the password entity and validates invariants.
+func (p *Password) Update(url, login, encryptedPassword, description string) error {
+	p.url = url
+	p.login = login
+	p.password = encryptedPassword
+	p.description = description
+
+	return p.validate()
+}
