@@ -8,4 +8,5 @@ import (
 type PasswordService interface {
 	AddNewPassword(password *command.AddPasswordCommand) error
 	GetAllPasswords() (*query.PasswordsQueryResult, error)
+	DeletePassword(cmd *command.DeletePasswordCommand) error
 }

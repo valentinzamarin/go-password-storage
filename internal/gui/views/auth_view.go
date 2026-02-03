@@ -1,4 +1,3 @@
-// internal/gui/views/login_view.go
 package views
 
 import (

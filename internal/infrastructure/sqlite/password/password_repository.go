@@ -42,3 +42,10 @@ func (p *GormPasswordRepository) GetAll() ([]*entities.Password, error) {
 
 	return passwords, nil
 }
+
+func (p *GormPasswordRepository) Delete(id uint) error {
+	if err := p.db.Delete(&PasswordModel{}, id).Error; err != nil {
+		return err
+	}
+	return nil
+}
