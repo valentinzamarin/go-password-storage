@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	command "password-storage/internal/app/command"
 	"password-storage/internal/app/interfaces"
 	"password-storage/internal/gui/views/dto/mapper"
 
@@ -41,6 +42,7 @@ func (v *GetPasswordsView) Render() fyne.CanvasObject {
 				widget.NewLabel(""),
 				widget.NewLabel(""),
 				widget.NewLabel(""),
+				widget.NewLabel(""),
 			)
 		},
 		func(i widget.ListItemID, o fyne.CanvasObject) {
@@ -51,6 +53,7 @@ func (v *GetPasswordsView) Render() fyne.CanvasObject {
 				box.Objects[0].(*widget.Label).SetText(fmt.Sprintf("URL: %s", pwd.URL))
 				box.Objects[1].(*widget.Label).SetText(fmt.Sprintf("Login: %s", pwd.Login))
 				box.Objects[2].(*widget.Label).SetText(fmt.Sprintf("Password: %s", pwd.Password))
+				box.Objects[3].(*widget.Label).SetText("")
 			}
 		},
 	)
@@ -68,7 +71,8 @@ func (v *GetPasswordsView) Render() fyne.CanvasObject {
 				{"Password", pwd.Password},
 			}
 
-			buttons := make([]fyne.CanvasObject, 0, len(fields))
+			buttons := make([]fyne.CanvasObject, 0, len(fields)+1)
+			var customDlg dialog.Dialog
 			for _, field := range fields {
 				f := field
 				buttons = append(buttons, widget.NewButton(f.name, func() {
@@ -80,7 +84,34 @@ func (v *GetPasswordsView) Render() fyne.CanvasObject {
 				}))
 			}
 
-			dialog.ShowCustom("Click to copy", "Close", container.NewVBox(buttons...), v.window)
+			buttons = append(buttons, widget.NewButton("Delete", func() {
+				confirm := dialog.NewConfirm("Delete password", "Are you sure you want to delete this password?", func(confirmed bool) {
+					if !confirmed {
+						return
+					}
+
+					delCmd := &command.DeletePasswordCommand{ID: pwd.ID}
+					if err := v.passwordService.DeletePassword(delCmd); err != nil {
+						dialog.ShowError(err, v.window)
+						return
+					}
+
+					if int(id) < len(passwords) {
+						passwords = append(passwords[:id], passwords[id+1:]...)
+						list.Refresh()
+					}
+
+					if customDlg != nil {
+						customDlg.Hide()
+					}
+
+					dialog.ShowInformation("Deleted", "Password deleted successfully", v.window)
+				}, v.window)
+				confirm.Show()
+			}))
+
+			customDlg = dialog.NewCustom("Click to copy / Delete", "Close", container.NewVBox(buttons...), v.window)
+			customDlg.Show()
 		}
 		list.UnselectAll()
 	}

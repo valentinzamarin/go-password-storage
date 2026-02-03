@@ -68,3 +68,13 @@ func (ps *PasswordService) GetAllPasswords() (*query.PasswordsQueryResult, error
 		Result: passwordsToView,
 	}, nil
 }
+
+func (ps *PasswordService) DeletePassword(cmd *command.DeletePasswordCommand) error {
+	if cmd == nil {
+		return fmt.Errorf("delete command is nil")
+	}
+	if err := ps.passwordRepo.Delete(cmd.ID); err != nil {
+		return fmt.Errorf("failed to delete password: %w", err)
+	}
+	return nil
+}
