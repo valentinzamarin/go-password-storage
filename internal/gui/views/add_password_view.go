@@ -8,6 +8,7 @@ this file - simple add form with 4 fields
 import (
 	"context"
 	"password-storage/internal/app/interfaces"
+	"password-storage/internal/gui/events"
 	"password-storage/internal/gui/views/components"
 	"password-storage/internal/gui/views/dto/request"
 	"time"
@@ -76,6 +77,7 @@ func (v *AddPasswordView) handleSubmit() {
 	dialog.ShowInformation("success", "Password added", v.window)
 
 	v.clearForm()
+	events.Publish("password.added", nil)
 }
 
 func (v *AddPasswordView) clearForm() {
