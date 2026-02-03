@@ -9,6 +9,7 @@ import (
 	"password-storage/internal/gui/views/dto/mapper"
 	req "password-storage/internal/gui/views/dto/request"
 	response "password-storage/internal/gui/views/dto/response"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -21,7 +22,9 @@ type GetPasswordsView struct {
 	passwordService interfaces.PasswordService
 	window          fyne.Window
 	list            *widget.List
-	passwords       []*response.PasswordsResponse
+	passwords       []*response.PasswordsResponse // filtered (displayed)
+	allPasswords    []*response.PasswordsResponse // full set
+	searchEntry     *widget.Entry
 	unsub           func()
 }
 
@@ -43,7 +46,9 @@ func (v *GetPasswordsView) loadPasswords() error {
 		return err
 	}
 
-	v.passwords = mapper.ToPasswordsResponseList(pwsQueryResults)
+	v.allPasswords = mapper.ToPasswordsResponseList(pwsQueryResults)
+	// apply current filter (or empty) to populate v.passwords
+	v.applyFilter("")
 	return nil
 }
 
@@ -57,10 +62,41 @@ func (v *GetPasswordsView) Refresh() error {
 	return nil
 }
 
+// applyFilter filters v.allPasswords by URL containing the query (case-insensitive)
+func (v *GetPasswordsView) applyFilter(query string) {
+	if query == "" {
+		v.passwords = v.allPasswords
+		return
+	}
+	q := strings.ToLower(query)
+	filtered := make([]*response.PasswordsResponse, 0, len(v.allPasswords))
+	for _, p := range v.allPasswords {
+		if strings.Contains(strings.ToLower(p.URL), q) {
+			filtered = append(filtered, p)
+		}
+	}
+	v.passwords = filtered
+}
+
 func (v *GetPasswordsView) Render() fyne.CanvasObject {
 	if err := v.loadPasswords(); err != nil {
 		dialog.ShowError(err, v.window)
 		return widget.NewLabel("Ошибка загрузки паролей")
+	}
+
+	// create search entry
+	if v.searchEntry == nil {
+		v.searchEntry = widget.NewEntry()
+		v.searchEntry.SetPlaceHolder("Search by URL")
+		v.searchEntry.OnChanged = func(text string) {
+			// filter and refresh on UI thread
+			fyne.Do(func() {
+				v.applyFilter(text)
+				if v.list != nil {
+					v.list.Refresh()
+				}
+			})
+		}
 	}
 
 	v.list = widget.NewList(
@@ -240,5 +276,5 @@ func (v *GetPasswordsView) Render() fyne.CanvasObject {
 		})
 	}
 
-	return container.NewVScroll(v.list)
+	return container.NewBorder(v.searchEntry, nil, nil, nil, container.NewVScroll(v.list))
 }
