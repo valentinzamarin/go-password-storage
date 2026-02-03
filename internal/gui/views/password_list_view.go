@@ -5,8 +5,10 @@ import (
 	"fmt"
 	command "password-storage/internal/app/command"
 	"password-storage/internal/app/interfaces"
+	"password-storage/internal/gui/events"
 	"password-storage/internal/gui/views/dto/mapper"
 	req "password-storage/internal/gui/views/dto/request"
+	response "password-storage/internal/gui/views/dto/response"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -18,30 +20,52 @@ import (
 type GetPasswordsView struct {
 	passwordService interfaces.PasswordService
 	window          fyne.Window
+	list            *widget.List
+	passwords       []*response.PasswordsResponse
+	unsub           func()
 }
 
 func NewGetPasswordsView(passwordService interfaces.PasswordService, window fyne.Window) *GetPasswordsView {
 	return &GetPasswordsView{
 		passwordService: passwordService,
 		window:          window,
+		list:            nil,
+		passwords:       nil,
 	}
 }
 
-func (v *GetPasswordsView) Render() fyne.CanvasObject {
+func (v *GetPasswordsView) loadPasswords() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	pwsQueryResults, err := v.passwordService.GetAllPasswords(ctx)
 	if err != nil {
+		return err
+	}
+
+	v.passwords = mapper.ToPasswordsResponseList(pwsQueryResults)
+	return nil
+}
+
+func (v *GetPasswordsView) Refresh() error {
+	if err := v.loadPasswords(); err != nil {
+		return err
+	}
+	if v.list != nil {
+		v.list.Refresh()
+	}
+	return nil
+}
+
+func (v *GetPasswordsView) Render() fyne.CanvasObject {
+	if err := v.loadPasswords(); err != nil {
 		dialog.ShowError(err, v.window)
 		return widget.NewLabel("Ошибка загрузки паролей")
 	}
 
-	passwords := mapper.ToPasswordsResponseList(pwsQueryResults)
-
-	list := widget.NewList(
+	v.list = widget.NewList(
 		func() int {
-			return len(passwords)
+			return len(v.passwords)
 		},
 		func() fyne.CanvasObject {
 			return container.NewHBox(
@@ -52,8 +76,8 @@ func (v *GetPasswordsView) Render() fyne.CanvasObject {
 			)
 		},
 		func(i widget.ListItemID, o fyne.CanvasObject) {
-			if i < len(passwords) {
-				pwd := passwords[i]
+			if i < len(v.passwords) {
+				pwd := v.passwords[i]
 
 				box := o.(*fyne.Container)
 				box.Objects[0].(*widget.Label).SetText(fmt.Sprintf("URL: %s", pwd.URL))
@@ -64,9 +88,9 @@ func (v *GetPasswordsView) Render() fyne.CanvasObject {
 		},
 	)
 
-	list.OnSelected = func(id widget.ListItemID) {
-		if int(id) < len(passwords) {
-			pwd := passwords[id]
+	v.list.OnSelected = func(id widget.ListItemID) {
+		if int(id) < len(v.passwords) {
+			pwd := v.passwords[id]
 
 			fields := []struct {
 				name  string
@@ -105,9 +129,10 @@ func (v *GetPasswordsView) Render() fyne.CanvasObject {
 						return
 					}
 
-					if int(id) < len(passwords) {
-						passwords = append(passwords[:id], passwords[id+1:]...)
-						list.Refresh()
+					// refresh entire list to keep consistency
+					if err := v.Refresh(); err != nil {
+						dialog.ShowError(err, v.window)
+						return
 					}
 
 					if customDlg != nil {
@@ -166,13 +191,10 @@ func (v *GetPasswordsView) Render() fyne.CanvasObject {
 						return
 					}
 
-					// refresh local list by updating the item in slice and refreshing
-					if int(id) < len(passwords) {
-						passwords[id].URL = cmd.URL
-						passwords[id].Login = cmd.Login
-						passwords[id].Password = cmd.Password
-						passwords[id].Description = cmd.Description
-						list.Refresh()
+					// refresh entire list
+					if err := v.Refresh(); err != nil {
+						dialog.ShowError(err, v.window)
+						return
 					}
 
 					// close edit and parent dialogs
@@ -191,8 +213,32 @@ func (v *GetPasswordsView) Render() fyne.CanvasObject {
 			customDlg = dialog.NewCustom("Click to copy / Delete", "Close", container.NewVBox(buttons...), v.window)
 			customDlg.Show()
 		}
-		list.UnselectAll()
+		v.list.UnselectAll()
 	}
 
-	return container.NewVScroll(list)
+	// subscribe to password added events (perform UI updates via fyne.Do)
+	if v.unsub == nil {
+		ch, unsub := events.Subscribe("password.added")
+		v.unsub = unsub
+
+		go func() {
+			for range ch {
+				fyne.Do(func() {
+					if err := v.Refresh(); err != nil {
+						dialog.ShowError(err, v.window)
+					}
+				})
+			}
+		}()
+
+		// ensure we unsubscribe when the window is closed to avoid leaks
+		v.window.SetOnClosed(func() {
+			if v.unsub != nil {
+				v.unsub()
+				v.unsub = nil
+			}
+		})
+	}
+
+	return container.NewVScroll(v.list)
 }
