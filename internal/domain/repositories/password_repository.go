@@ -1,14 +1,19 @@
 package repositories
 
-import "password-storage/internal/domain/entities"
+import (
+	"context"
+	"password-storage/internal/domain/entities"
+)
 
 type PasswordCommands interface {
-	Add(password *entities.Password) error
-	Delete(id uint) error
+	Add(ctx context.Context, password *entities.Password) error
+	Delete(ctx context.Context, id uint) error
+	Update(ctx context.Context, password *entities.Password) error
 }
 
 type PasswordQueries interface {
-	GetAll() ([]*entities.Password, error)
+	GetAll(ctx context.Context) ([]*entities.Password, error)
+	GetByID(ctx context.Context, id uint) (*entities.Password, error)
 }
 
 type PasswordRepo interface {

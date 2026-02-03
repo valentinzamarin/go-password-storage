@@ -1,10 +1,13 @@
 package views
 
 import (
+	"context"
 	"fmt"
 	command "password-storage/internal/app/command"
 	"password-storage/internal/app/interfaces"
 	"password-storage/internal/gui/views/dto/mapper"
+	req "password-storage/internal/gui/views/dto/request"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -25,7 +28,10 @@ func NewGetPasswordsView(passwordService interfaces.PasswordService, window fyne
 }
 
 func (v *GetPasswordsView) Render() fyne.CanvasObject {
-	pwsQueryResults, err := v.passwordService.GetAllPasswords()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pwsQueryResults, err := v.passwordService.GetAllPasswords(ctx)
 	if err != nil {
 		dialog.ShowError(err, v.window)
 		return widget.NewLabel("Ошибка загрузки паролей")
@@ -91,7 +97,10 @@ func (v *GetPasswordsView) Render() fyne.CanvasObject {
 					}
 
 					delCmd := &command.DeletePasswordCommand{ID: pwd.ID}
-					if err := v.passwordService.DeletePassword(delCmd); err != nil {
+					ctxDel, cancelDel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancelDel()
+
+					if err := v.passwordService.DeletePassword(ctxDel, delCmd); err != nil {
 						dialog.ShowError(err, v.window)
 						return
 					}
@@ -108,6 +117,75 @@ func (v *GetPasswordsView) Render() fyne.CanvasObject {
 					dialog.ShowInformation("Deleted", "Password deleted successfully", v.window)
 				}, v.window)
 				confirm.Show()
+			}))
+
+			// Edit button
+			buttons = append(buttons, widget.NewButton("Edit", func() {
+				// prepare form entries prefilled
+				urlEntry := widget.NewEntry()
+				urlEntry.SetText(pwd.URL)
+				loginEntry := widget.NewEntry()
+				loginEntry.SetText(pwd.Login)
+				passwordEntry := widget.NewPasswordEntry()
+				passwordEntry.SetText(pwd.Password)
+				descEntry := widget.NewEntry()
+				descEntry.SetText(pwd.Description)
+
+				formItems := []*widget.FormItem{
+					widget.NewFormItem("URL", urlEntry),
+					widget.NewFormItem("Login", loginEntry),
+					widget.NewFormItem("Password", passwordEntry),
+					widget.NewFormItem("Description", descEntry),
+				}
+
+				var form dialog.Dialog
+				form = dialog.NewForm("Edit password", "Save", "Cancel", formItems, func(confirmed bool) {
+					if !confirmed {
+						return
+					}
+
+					updateReq := req.UpdatePasswordRequest{
+						ID:          pwd.ID,
+						URL:         urlEntry.Text,
+						Login:       loginEntry.Text,
+						Password:    passwordEntry.Text,
+						Description: descEntry.Text,
+					}
+					cmd, err := updateReq.ToUpdatePasswordCommand()
+					if err != nil {
+						dialog.ShowError(err, v.window)
+						return
+					}
+
+					// call service
+					ctxUpd, cancelUpd := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancelUpd()
+
+					if err := v.passwordService.UpdatePassword(ctxUpd, cmd); err != nil {
+						dialog.ShowError(err, v.window)
+						return
+					}
+
+					// refresh local list by updating the item in slice and refreshing
+					if int(id) < len(passwords) {
+						passwords[id].URL = cmd.URL
+						passwords[id].Login = cmd.Login
+						passwords[id].Password = cmd.Password
+						passwords[id].Description = cmd.Description
+						list.Refresh()
+					}
+
+					// close edit and parent dialogs
+					form.Hide()
+					if customDlg != nil {
+						customDlg.Hide()
+					}
+
+					dialog.ShowInformation("Updated", "Password updated successfully", v.window)
+				}, v.window)
+
+				form.Resize(fyne.NewSize(400, 200))
+				form.Show()
 			}))
 
 			customDlg = dialog.NewCustom("Click to copy / Delete", "Close", container.NewVBox(buttons...), v.window)

@@ -1,13 +1,16 @@
 package views
+
 /*
 
 this file - simple add form with 4 fields
 
 */
 import (
+	"context"
 	"password-storage/internal/app/interfaces"
 	"password-storage/internal/gui/views/components"
 	"password-storage/internal/gui/views/dto/request"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -61,7 +64,10 @@ func (v *AddPasswordView) handleSubmit() {
 		return
 	}
 
-	serviceErr := v.passwordService.AddNewPassword(addPwCmd)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	serviceErr := v.passwordService.AddNewPassword(ctx, addPwCmd)
 	if serviceErr != nil {
 		dialog.ShowError(serviceErr, v.window)
 		return
