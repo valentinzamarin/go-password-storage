@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net"
 
 	"password-storage/internal/app/services"
 	"password-storage/internal/encrypt"
@@ -13,6 +14,12 @@ import (
 )
 
 func main() {
+
+	listener, err := net.Listen("tcp", "127.0.0.1:54231")
+	if err != nil {
+		log.Fatalf("app is already running %v", err)
+	}
+	defer listener.Close()
 
 	basePath := "./notebook.db"
 
